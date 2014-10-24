@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+
+    <head>
+        <meta charset="utf-8">
+
+        <title>Writing Safe, Fast, and Usable Collections in Rust</title>
+
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+        <link rel="stylesheet" href="css/reveal.min.css">
+        <link rel="stylesheet" href="css/theme/night.css" id="theme">
+
+        <!-- For syntax highlighting -->
+        <link rel="stylesheet" href="plugin/highlight/css/zenburn.css">
+
+        <style>
+            .reveal code {
+              font-size: 1.5em;
+                line-height: 1.3em;
+                max-height: 550px !important;
+            }
+
+            .slides {
+                width: 100% !important;
+                font-size: 1.5em !important;
+
+            }
+
+            section {
+              line-height: 1.3em;
+            }
+        </style>
+
+        <!-- If the query includes 'print-pdf', include the PDF print sheet -->
+        <script>
+            if( window.location.search.match( /print-pdf/gi ) ) {
+                var link = document.createElement( 'link' );
+                link.rel = 'stylesheet';
+                link.type = 'text/css';
+                link.href = 'css/print/pdf.css';
+                document.getElementsByTagName( 'head' )[0].appendChild( link );
+            }
+        </script>
+
+        <!--[if lt IE 9]>
+        <script src="lib/js/html5shiv.js"></script>
+        <![endif]-->
+    </head>
+
+    <body>
+
+        <div class="reveal">
+
+            <!-- Any section element inside of this container is displayed as a slide -->
+            <div class="slides">
+
+
+
+
+
+
+
+
+
+<section data-markdown><script type="text/content">
+    ## How Rust Can Make Your Code Safe and Fast
+    ### (And How You Can Make it Usable)
+
+    ### Alexis Beingessner
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Why Rust?
+
+    * High-performance applications like C/C++
+    * C/C++ are really awesome (for control)!
+    * C/C++ are really awful (for reasoning)!
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Firefox is basically an operating system that
+    accepts and *executes* arbitrary data from the internet.
+
+    * Gotta be fast/effecient (so people use it)
+    * Gotta be safe (because people use it)
+    * Gotta be maintainable (so people build it)
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Solution: Rust!
+
+    Rust bridges the gap between low-level control
+    and high-level safety/convenience.
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Let's see what Rust's about in practice:
+
+    [http://play.rust-lang.org/](http://play.rust-lang.org/)
+</script></section>
+
+<section data-markdown><script type="text/content">
+    In Summary, in (safe) Rust code:
+
+    * No unitialized memory can be accessed
+    * No null pointers
+    * No dangling pointers
+    * No data races
+    * No buffer overflows
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Collections in Rust are *hard*
+
+    * Academic texts assume C-style "full access" to memory
+      * Raw pointers everywhere!
+    * Persistent/functional structures are overkill
+      * BRB writing a lazy persistent memoization framework
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Success Stories: Array-based structures
+
+    Really straightforward ownership and traversal: They're just a single block of memory!
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Nightmare Stories: Tree-based Structures
+
+    * Stacks of raw pointers!
+    * Macros as far as the eye can see!
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Common Realities
+
+    * Collections have to be *fast* and *lean*
+    * They're going to have to use computational primitives
+    * They're going to use unsafe code, somewhere
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Goals (Internal)
+
+    * Make the unsafe code minimal
+    * Make the unsafe code *centralized*
+    * Keep it DRY
+    * Avoid macros
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Goals (External)
+
+    * Never require unsafe code to use a collection "right"
+    * Make the safe interface the *fastest*
+    * Make the safe interface actually *usable*
+    * Make the safe interface *composable*
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Problem: Iterating over a Vec
+</script></section>
+
+<section>
+    C-style for-loops!
+    <pre><code>
+  for i in range(0, vec.len()) {
+      let elem = &vec[i];
+      ...
+  }
+    </code></pre>
+</section>
+
+<section data-markdown><script type="text/content">
+    * Wordy/Repetitive (and therefore error-prone)
+    * Slow! We're doing bounds checks on every index
+</script></section>
+
+<section>
+    Bypass indexing!
+    <pre><code>
+  for i in range(0, vec.len()){
+      unsafe {
+          let elem = vec[].unsafe_get(i);
+          ...
+      }
+  }
+    </code></pre>
+</section>
+
+<section data-markdown><script type="text/content">
+    * Even *more* error-prone boiler-plate
+    * Unsafe!!!
+</script></section>
+
+<section>
+    Internal Iterators!
+    <pre><code>
+  vec.for_each(|x| {
+      ...
+      return false;
+  });
+    </code></pre>
+</section>
+
+<section data-markdown><script type="text/content">
+    * Safe! (Assuming Vec is written correctly)
+    * Fast?
+      * Vec can use unsafe internally to yield elements
+      * LLVM can sometimes inline closures away
+    * Still *some* boiler-plate.
+    * Internally: written "naturally"
+</script></section>
+
+<section>
+    Adaptors!
+    <pre><code>
+  vec.for_each(
+      map(|x| x * 2,
+      filter(|x| x < 10,
+      |x| {
+          ...
+          return false;
+      })
+      })
+      })
+  });
+    </code></pre>
+</section>
+
+<section data-markdown><script type="text/content">
+    Adaptors...?
+
+    Zip? How do you iterate two things simultaneously?
+</script></section>
+
+<section>
+    External Iterators!
+    <pre><code>
+  for elem in vec.iter() {
+      ...
+  }
+    </code></pre>
+</section>
+
+<section data-markdown><script type="text/content">
+    * Super Fast!
+      * Compiles down to ASM of equivalent C
+      * Easier for LLVM to work with
+    * Safe! (Assuming Vec is written correctly)
+    * Short! No boiler-plate or closures!
+    * Internally: a bit harder to write.
+</script></section>
+
+<section>
+    Adaptors!
+    <pre><code>
+  for elem in vec.iter()
+      .map(|x| x * 2)
+      .filter(|x| x < 10) {
+
+      ...
+  }
+    </code></pre>
+</section>
+
+<section>
+    Simultaneous Iteration!
+    <pre><code>
+  for (a, b) in vec.iter().zip(vec2.iter()) {
+      ...
+  }
+    </code></pre>
+</section>
+
+<section>
+    External iterators are also secretly <i>wizard magic</i>
+    <pre><code>
+  let mut it = vec.iter_mut();
+  let a = it.next().unwrap();
+  let b = it.next().unwrap();
+  let c = it.next().unwrap();
+  // !!! Multiple aliasing? Safety???
+    </code></pre>
+</section>
+
+<section data-markdown><script type="text/content">
+    It's safe *and* allowed because:
+
+    * Collection is inaccessible while iterator exists
+    * Returned references have no connection to the iterator
+    * Each yielded element is disjoint from all others
+    * Iterators can't "go back"
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Wizard Magic *does* have its costs:
+
+    * Can't soundly be mutably bi-directional (no prev)
+    * Inserting/Deleting in the stream is very constrained
+</script></section>
+
+<section data-markdown><script type="text/content">
+    Help!
+
+    Rust's standard libraries are an inconsistent and buggy mess.
+
+    We're super friendly, just submit a PR on Github!
+
+    Don't know Rust yet? No worries, it's a great way to learn!
+
+    http://rust-lang.org/
+</script></section>
+
+
+
+
+
+
+
+
+<script src="lib/js/head.min.js"></script>
+<script src="js/reveal.min.js"></script>
+
+<script>
+
+    // Full list of configuration options available here:
+    // https://github.com/hakimel/reveal.js#configuration
+    Reveal.initialize({
+        controls: true,
+        progress: true,
+        history: true,
+        center: true,
+
+        theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+        transition: 'concave', // default/cube/page/concave/zoom/linear/fade/none
+
+        // Parallax scrolling
+        // parallaxBackgroundImage: 'https://s3.amazonaws.com/hakim-static/reveal-js/reveal-parallax-1.jpg',
+        // parallaxBackgroundSize: '2100px 900px',
+
+        // Optional libraries used to extend on reveal.js
+        dependencies: [
+            { src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+            { src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+            { src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+            { src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+            { src: 'plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+            { src: 'plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }
+        ]
+    });
+
+</script>
+
+</body>
+</html>
